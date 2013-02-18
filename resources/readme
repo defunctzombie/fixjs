@@ -1,0 +1,11 @@
+http://www.onixs.biz/tools/fixdictionary/
+http://www.quickfixengine.org/xml
+
+admin messages:
+// Heartbeat
+// TestRequest
+// ResendRequest
+// Reject
+// SequenceReset
+// Logout
+// Logon
