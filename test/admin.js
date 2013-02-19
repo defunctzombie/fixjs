@@ -16,7 +16,9 @@ test('logon', function(done) {
     var stream_server = through();
     var stream_client = through();
 
-    var server = fix.createServer(duplexer(stream_client, stream_server));
+    var server = fix.createServer();
+    server.attach(duplexer(stream_client, stream_server));
+
     var client = fix.createClient(duplexer(stream_server, stream_client));
 
     server.on('session', function(session) {
@@ -36,7 +38,9 @@ test('logout', function(done) {
     var stream_server = through();
     var stream_client = through();
 
-    var server = fix.createServer(duplexer(stream_client, stream_server));
+    var server = fix.createServer();
+    server.attach(duplexer(stream_client, stream_server));
+
     var client = fix.createClient(duplexer(stream_server, stream_client));
 
     server.on('session', function(session) {
@@ -56,37 +60,38 @@ test('logout', function(done) {
     session.logon();
 });
 
-/*
 test('spoof', function(done) {
 
     var stream_server = through();
     var stream_client = through();
-    var stream_client2 = through();
 
-    var server = fix.createServer(duplexer(stream_client, stream_server));
+    var server = fix.createServer();
+    server.attach(duplexer(stream_client, stream_server));
     var client = fix.createClient(duplexer(stream_server, stream_client));
 
-    var client2 = fix.createClient(duplexer(stream_server, stream_client2));
+    var stream_server2 = through();
+    var stream_client2 = through();
 
-    var client2 = self.client2 = fix.createClient();
-    var session = client2.session('initiator', 'acceptor');
-
-    // trying to reuse a session on a different connection should boot us
-    session.logon();
-
-    // we expect to be disconnected by the server for trying to use an existing session
-    client2.on('end', function() {
-        done();
-    });
+    server.attach(duplexer(stream_client2, stream_server2));
+    var client2 = fix.createClient(duplexer(stream_server2, stream_client2));
 
     var session = client.session('initiator', 'acceptor');
     session.on('logon', function() {
-        client2.connect(1234, 'localhost');
+
+        // try to open another connection with same session
+        var session = client2.session('initiator', 'acceptor');
+
+        // we expect to be disconnected by the server
+        client2.stream.on('end', function() {
+            done();
+        });
+
+        // trying to reuse a session on a different connection should boot us
+        session.logon();
     });
 
     session.logon();
 });
-*/
 
 test('test request', function(done) {
     done = after(2, done);
@@ -94,7 +99,8 @@ test('test request', function(done) {
     var stream_server = through();
     var stream_client = through();
 
-    var server = fix.createServer(duplexer(stream_client, stream_server));
+    var server = fix.createServer();
+    server.attach(duplexer(stream_client, stream_server));
     var client = fix.createClient(duplexer(stream_server, stream_client));
 
     server.on('session', function(session) {
@@ -123,7 +129,8 @@ test('reject logon', function(done) {
     var stream_server = through();
     var stream_client = through();
 
-    var server = fix.createServer(duplexer(stream_client, stream_server));
+    var server = fix.createServer();
+    server.attach(duplexer(stream_client, stream_server));
     var client = fix.createClient(duplexer(stream_server, stream_client));
 
     server.on('session', function(session) {
@@ -157,7 +164,8 @@ test('unsupported message', function(done) {
     var stream_server = through();
     var stream_client = through();
 
-    var server = fix.createServer(duplexer(stream_client, stream_server));
+    var server = fix.createServer();
+    server.attach(duplexer(stream_client, stream_server));
     var client = fix.createClient(duplexer(stream_server, stream_client));
 
     server.on('session', function(session) {
@@ -184,7 +192,8 @@ test('resend request', function(done) {
     var stream_server = through();
     var stream_client = through();
 
-    var server = fix.createServer(duplexer(stream_client, stream_server));
+    var server = fix.createServer();
+    server.attach(duplexer(stream_client, stream_server));
     var client = fix.createClient(duplexer(stream_server, stream_client));
 
     server.on('session', function(session) {
@@ -215,7 +224,8 @@ test('sequest reset', function(done) {
     var stream_server = through();
     var stream_client = through();
 
-    var server = fix.createServer(duplexer(stream_client, stream_server));
+    var server = fix.createServer();
+    server.attach(duplexer(stream_client, stream_server));
     var client = fix.createClient(duplexer(stream_server, stream_client));
 
     server.on('session', function(session) {

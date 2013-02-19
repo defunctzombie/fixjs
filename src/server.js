@@ -5,14 +5,23 @@ var events = require('events');
 var FixFrameDecoder = require('./frame_decoder');
 var Session = require('./session');
 
-var Server = function(stream, opt) {
+var Server = function(opt) {
     var self = this;
     events.EventEmitter.call(self);
 
     // map of session ids that are currently active
     // the value in the map is an object with fields 'stream', and 'session'
     // this is to ensure that only the connected stream is accessing the session
-    var sessions = {};
+    self.sessions = {};
+};
+
+Server.prototype = new events.EventEmitter();
+
+// attach the server to this stream
+// servers should be attached to multiple streams
+Server.prototype.attach = function(stream) {
+    var self = this;
+    var sessions = self.sessions;
 
     var decoder = stream.pipe(FixFrameDecoder());
 
@@ -111,7 +120,5 @@ var Server = function(stream, opt) {
         // anything?
     })
 };
-
-Server.prototype = new events.EventEmitter();
 
 module.exports = Server;
