@@ -39,6 +39,10 @@ parser.parseString(data, function (err, result) {
 
         // new message class
         var msg_t = function() {
+            if (!(this instanceof msg_t)) {
+                return new msg_t();
+            }
+
             var self = this;
             Msg.call(self);
 
