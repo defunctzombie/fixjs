@@ -25,10 +25,14 @@ var Client = function(stream, opt) {
         var counter = msg.SenderCompID;
         var session = sessions[counter];
         if (!session) {
-            // no such session
-            self.emit('error', new Error('no session: ' + counter));
-            return;
+            // the server sent us something which we did not initiate
+            return self.emit('error', new Error('no session: ' + counter));
         }
+
+        // when the incoming decoder stream ends, the session ends
+        decoder.once('end', function() {
+            session.end();
+        });
 
         session.incoming(msg);
     });

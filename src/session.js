@@ -5,6 +5,51 @@ var events = require('events');
 var Msg = require('./msg');
 var Msgs = require('./msgs');
 
+var middleware = function() {
+    var content = [];
+
+    // this will be called with args to apply to all content items
+    var process = function() {
+        if (arguments.length > 2) {
+            return process_2arg.apply(null, arguments);
+        }
+        return process_1arg.apply(null, arguments);
+    };
+
+    var process_1arg = function(msg, done_fn) {
+        var idx = 0;
+        (function next(err) {
+            if (err) {
+                return done_fn(err);
+            }
+
+            if (idx >= content.length) {
+                return done_fn();
+            }
+
+            content[idx++](msg, next);
+        })();
+    };
+
+    var process_2arg = function(error, msg, done_fn) {
+        var idx = 0;
+        (function next(err) {
+            if (err) {
+                return done_fn(err);
+            }
+
+            if (idx >= content.length) {
+                return done_fn();
+            }
+
+            content[idx++](error, msg, next);
+        })();
+    };
+
+    process.push = content.push.bind(content);
+    return process;
+};
+
 var Session = function(is_acceptor, opt) {
     var self = this;
 
@@ -23,12 +68,16 @@ var Session = function(is_acceptor, opt) {
     // heartbeat interval
     self.is_logged_in = false;
 
+    self._pipeline = middleware();
+    self._error_pipeline = middleware();
+
     // admin handlers
     var admin = self.admin = {};
 
     admin.Logon = function(msg, next) {
         var heartbt_milli = +msg.HeartBtInt * 1000;
         if (isNaN(heartbt_milli)) {
+            return self.reject(msg, 'invalid heartbeat internval, must be numeric');
             // send back invalid heartbeat
             return next(new Error('invalid heartbeat interval, must be numeric'));
         };
@@ -108,7 +157,8 @@ var Session = function(is_acceptor, opt) {
     admin.TestRequest = function(msg, next) {
         var heartbeat = new Msgs.Heartbeat();
         heartbeat.TestReqID = msg.TestReqID;
-        return next(heartbeat);
+        self.send(heartbeat);
+        return next();
     };
 
     admin.ResendRequest = function(msg, next) {
@@ -116,7 +166,8 @@ var Session = function(is_acceptor, opt) {
         var seq_reset = new Msgs.SequenceReset();
         seq_reset.GapFillFlag = 'N';
         seq_reset.NewSeqNo = msg.EndSeqNo;
-        return next(seq_reset);
+        self.send(seq_reset);
+        return next();
     };
 
     // note that for SeqReset - Reset the header MsgSeqNum is ignored
@@ -145,24 +196,34 @@ var Session = function(is_acceptor, opt) {
     };
 
     admin.Reject = function(msg, next) {
-        self.emit('error', new Error(msg.Text));
         next();
     };
 
-    // our admin handling
-    self.on('message', function(msg, next) {
+    // admin handler
+    self.use(function(msg, next) {
         self._process_incoming(msg, next);
     });
 
-    // handle dispatching messages by name or rejecting if unsupported
-    self.on('message', function(msg, next) {
+    // fanout
+    self.use(function(msg, next) {
         var listeners = self.listeners(msg.name).concat();
         if (listeners.length === 0) {
             // admin messages don't need to be handled by the app
-            if (['0', '1', '2', '3', '4', '5', 'A'].indexOf(msg.MsgType) >= 0) {
+            // reject messages are specially handled to emit errors
+            if (['0', '1', '2', '4', '5', 'A'].indexOf(msg.MsgType) >= 0) {
                 return next();
             }
-            return next(new Error('unsupported message type: ' + msg.MsgType));
+
+            if (msg.MsgType === '3') {
+                self.emit('error', new Error('Reject messages should be handled'));
+                return next();
+            }
+
+            // we reject to let the sender know we don't care about this message
+            var reject = Msgs.Reject();
+            reject.Text = 'unsupported message type: ' + msg.MsgType;
+            reject.SessionRejectReason = 11; // invalid MsgType
+            return next(reject);
         }
 
         (function next_listener() {
@@ -185,14 +246,28 @@ var Session = function(is_acceptor, opt) {
 
 Session.prototype = new events.EventEmitter();
 
-Session.prototype.reject = function(orig_msg, reason) {
+Session.prototype.use = function(fn) {
+    if (fn.length === 3) {
+        this._error_pipeline.push(fn);
+        return this;
+    }
+
+    this._pipeline.push(fn);
+    return this;
+};
+
+Session.prototype.reject = function(orig_msg, reject) {
     var self = this;
 
-    var msg = new Msgs.Reject();
-    msg.RefSeqNum = orig_msg.MsgSeqNum;
-    msg.RefMsgType = orig_msg.MsgType;
-    msg.Text = reason;
-    return self.send(msg);
+    if (typeof reject === 'string') {
+        var msg = new Msgs.Reject();
+        msg.Text = reject;
+        reject = msg;
+    }
+
+    reject.RefSeqNum = orig_msg.MsgSeqNum;
+    reject.RefMsgType = orig_msg.MsgType;
+    return self.send(reject);
 };
 
 // process incoming message
@@ -208,8 +283,6 @@ Session.prototype.incoming = function(msg) {
 
     self.processing = true;
 
-    var message_handlers = self.listeners('message').concat(); //cheap clone
-
     function next_msg() {
         self.processing = false;
         var msg = self.msg_queue.shift();
@@ -219,77 +292,90 @@ Session.prototype.incoming = function(msg) {
         return self.incoming(msg);
     }
 
-    // we do this because admin handlers should always run last
-    // this allows users to hookup their own 'message' handlers and have them always run before
-    message_handlers.push(function(msg, next) {
-        var admin_handler = self.admin[msg.name];
-        if (!admin_handler) {
-            return next();
+    // checks that the handler actually returned in a reasonable amount of time
+    // TODO let user specify what to do in this case? skip to next message?
+    // this would be bad as we did not fully process this message but did mark expected sequence numbers
+    // maybe mark sequence number after message is done processing? I kinda like that more
+    var execution_timeout = setTimeout(function() {
+        var err = new Error('message handler taking too long to execute');
+        err.msg = msg;
+        self.emit('error', err);
+    }, 1000);
+
+    function handle_err(err, cb) {
+        // TODO (shtylman) if a logon message, session will be ended
+        // no more messages will be processed
+        if (msg.MsgType === 'A') {
+            self.msg_queue = []
+            cb();
+
+            // TODO (shtylman) should send back reason user will be disconnected
+            return self.logout(err.message);
         }
-        admin_handler(msg, next);
-    });
 
-    (function next() {
-        var handler = message_handlers.shift();
-        if (!handler) {
-            // move on to the next message
-            return next_msg();
+        // TODO I think the error pipeline should just take over?
+        if (err instanceof Msg) {
+            return self.send(err);
         }
 
-        // checks that the handler actually returned in a reasonable amount of time
-        // TODO let user specify what to do in this case? skip to next message?
-        // this would be bad as we did not fully process this message but did mark expected sequence numbers
-        // maybe mark sequence number after message is done processing? I kinda like that more
-        var execution_timeout = setTimeout(function() {
-            self.emit('error', new Error('message handler taking too long to execute: ' + msg.toString()));
-        }, 1000);
-
-        handler(msg, function(result) {
-            clearTimeout(execution_timeout);
-
-            if (result instanceof Error) {
-                // if a logon message, session will be ended
-                // no more messages will be processed
-                if (msg.MsgType === 'A') {
-                    self.msg_queue = []
-                    next_msg();
-                    return self.end();
+        self._error_pipeline(err, msg, function(err) {
+            if (err) {
+                if (err instanceof Msg) {
+                    return self.send(err);
                 }
 
-                self.reject(msg, result.message);
-                return next_msg();
-            } else if (result instanceof Msg) {
-                self.send(result);
-                return next_msg();
+                self.emit('error', err);
             }
 
-            // next message handler
-            next();
+            cb();
         });
-    })();
+    }
+
+    // start the message down the pipeline
+    self._pipeline(msg, function(err) {
+        clearTimeout(execution_timeout);
+
+        // called when pipeline is done
+        if (err) {
+            return handle_err(err, next_msg);
+        }
+
+        // admin handlers run after other pipeline parts?
+        var admin_handler = self.admin[msg.name];
+        if (!admin_handler) {
+            return next_msg();
+        }
+        admin_handler(msg, function(err) {
+            if (err) {
+                return handle_err(err);
+            }
+
+            return next_msg();
+        });
+    });
 };
 
-Session.prototype._process_incoming = function(msg, cb) {
+Session.prototype._process_incoming = function(msg, next) {
     var self = this;
 
     self.last_timestamp = Date.now();
 
     // first message should always be a logon
     if (!self.is_logged_in && msg.MsgType !== 'A') {
-        return cb(new Error('expected Logon message, got: ' + msg.MsgType));
+        return next(new Error('expected Logon message, got: ' + msg.MsgType));
     }
 
     // check sequence gap
     var msg_seq_num = +msg.MsgSeqNum;
 
     if (isNaN(msg_seq_num)) {
-        return cb(new Error('MsgSeqNum must be numeric: ' + msg.MsgSeqNum));
+        return next(new Error('MsgSeqNum must be numeric: ' + msg.MsgSeqNum));
     }
 
     // SeqReset - Reset ignores message sequencing
     // this will be handled by the session admin
     if (msg.MsgType === '4' && (msg.GapFillFlag === undefined || msg.GapFillFlag === 'N')) {
-        return cb();
+        return next();
     }
 
     if (msg_seq_num > self.incoming_seq_num) {
@@ -301,7 +387,8 @@ Session.prototype._process_incoming = function(msg, cb) {
         var resend_request = new Msgs.ResendRequest();
         resend_request.BeginSeqNo = self.incomingSeqNum;
         resend_request.EndSeqNo = 0;
-        return cb(resend_request);
+        self.send(resend_request);
+        return next();
     } else if (msg_seq_num < self.incoming_seq_num) {
         // From the fix spec:
         // If the incoming message has a sequence number less than expected and the
@@ -315,16 +402,14 @@ Session.prototype._process_incoming = function(msg, cb) {
             //return; // we can't do this, no other handlers will be called ever again
         //}
 
-        cb(new Error('sequence reversal; expecting ' + self.incoming_seq_num + ' got ' + msg_seq_num + '. terminating session'));
+        next(new Error('sequence reversal; expecting ' + self.incoming_seq_num + ' got ' + msg_seq_num + '. terminating session'));
         return self.end();
     }
 
     // set new expected seq
     self.incoming_seq_num = msg_seq_num + 1;
 
-    // message has passed basic tests, send to next level
-    // app then our admin handler
-    cb();
+    next();
 };
 
 // send a message to the session
