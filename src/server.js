@@ -1,5 +1,6 @@
 // builtin
-var events = require('events');
+var EventEmitter = require('events').EventEmitter;
+var util = require("util");
 
 // local
 var FixFrameDecoder = require('./frame_decoder');
@@ -7,7 +8,8 @@ var Session = require('./session');
 
 var Server = function(opt) {
     var self = this;
-    events.EventEmitter.call(self);
+
+    EventEmitter.call(self);
 
     // map of session ids that are currently active
     // the value in the map is an object with fields 'stream', and 'session'
@@ -15,7 +17,7 @@ var Server = function(opt) {
     self.sessions = {};
 };
 
-Server.prototype = new events.EventEmitter();
+util.inherits(Server, EventEmitter);
 
 // attach the server to this stream
 // servers should be attached to multiple streams

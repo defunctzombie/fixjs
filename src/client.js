@@ -1,5 +1,6 @@
 // builtin
-var events = require('events');
+var EventEmitter = require('events').EventEmitter;
+var util = require("util");
 
 // local
 var FixFrameDecoder = require('./frame_decoder');
@@ -7,6 +8,8 @@ var Session = require('./session');
 
 var Client = function(stream, opt) {
     var self = this;
+
+    EventEmitter.call(self);
 
     self.stream = stream;
     var sessions = self.sessions = {};
@@ -34,7 +37,7 @@ var Client = function(stream, opt) {
     });
 };
 
-Client.prototype = new events.EventEmitter();
+util.inherits(Client, EventEmitter);
 
 // create a new session, the session is in a non-logged on state
 Client.prototype.session = function(sender_comp_id, target_comp_id) {

@@ -1,12 +1,15 @@
 /// fix session
 
-var events = require('events');
+var EventEmitter = require('events').EventEmitter;
+var util = require("util");
 
 var Msg = require('./msg');
 var Msgs = require('./msgs');
 
 var Session = function(is_acceptor, opt) {
     var self = this;
+
+    EventEmitter.call(self);
 
     self.incoming_seq_num = 1;
     self.outgoing_seq_num = 1;
@@ -183,7 +186,7 @@ var Session = function(is_acceptor, opt) {
     });
 };
 
-Session.prototype = new events.EventEmitter();
+util.inherits(Session, EventEmitter);
 
 Session.prototype.reject = function(orig_msg, reason) {
     var self = this;
