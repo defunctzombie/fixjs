@@ -6,14 +6,20 @@ var util = require("util");
 var FixFrameDecoder = require('./frame_decoder');
 var Session = require('./session');
 
+var separator = '\x01';
+
+/*
+ Being able to create more than one instance of Server is convenient for testing
+ but it enables simultaneous connections of the same SenderCompID/TargetCompID pair,
+ i.e. it is a security risk.
+ */
 var Server = function(opt) {
     var self = this;
 
     EventEmitter.call(self);
 
-    // map of session ids that are currently active
-    // the value in the map is an object with fields 'stream', and 'session'
-    // this is to ensure that only the connected stream is accessing the session
+    // Map of session ids that are currently active, so different streams
+    // can be prevented from accessing the same session.
     self.sessions = {};
 };
 
@@ -36,12 +42,9 @@ Server.prototype.attach = function(stream) {
         stream.end();
     }, 1000 * 30);
 
-    // TODO(shtylman) when stream ends, everything is done
     stream.on('end', function() {
         clearTimeout(logon_timeout);
     });
-
-    // TODO(shtylman) emit on successful login?
 
     var session_count = 0;
 
@@ -106,10 +109,6 @@ Server.prototype.attach = function(stream) {
 
         session.incoming(msg);
     });
-
-    stream.on('end', function() {
-        // anything?
-    })
 };
 
 module.exports = Server;
