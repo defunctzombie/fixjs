@@ -16,7 +16,7 @@ var Session = function(is_acceptor, opt) {
 
     self.is_acceptor = is_acceptor;
     self.respond_to_logon = true;
-	self.send_heartbeats = true;
+    self.send_heartbeats = true;
     self.expect_heartbeats = true;
 
     self.sender_comp_id = opt.sender;
@@ -110,6 +110,13 @@ var Session = function(is_acceptor, opt) {
         // we got a logout request, respond
         // this gives the counter party a chance to do perform resend requests
         self.send(new Msgs.Logout());
+
+        // From page 58 of FixT1.1 spec:
+        // Wait for counterparty to disconnect up to 10 seconds.
+        // If max exceeded, disconnect.
+        //self.? = setTimeout(function() {
+        //    self.end();
+        //}, 1000 * 10);
 
         // TODO should resend requests be the only thing supported here?
         // IE only allow admin messages after a logout confirmation
@@ -263,7 +270,7 @@ Session.prototype.incoming = function(msg) {
                 // if a logon message, session will be ended
                 // no more messages will be processed
                 if (msg.MsgType === 'A') {
-                    self.msg_queue = []
+                    self.msg_queue = [];
                     next_msg();
                     return self.end();
                 }
@@ -271,7 +278,10 @@ Session.prototype.incoming = function(msg) {
                 self.reject(msg, result.message);
                 return next_msg();
             } else if (result instanceof Msg) {
-                self.send(result);
+
+                if (!result.ignore) {
+                    self.send(result);
+                }
                 return next_msg();
             }
 
@@ -283,12 +293,17 @@ Session.prototype.incoming = function(msg) {
 
 Session.prototype._process_incoming = function(msg, cb) {
     var self = this;
+    var result;
 
     self.last_incoming_time = Date.now();
 
+    // TODO?
+    // Check format and accuracy of SendingTime.
+    // Reject with "SendingTime acccuracy problem".
+
     // first message should always be a logon
     if (!self.is_logged_in && msg.MsgType !== 'A') {
-        return cb(new Error('expected Logon message, got: ' + msg.MsgType));
+        return cb(new Error('First message not a logon: ' + msg.MsgType));
     }
 
     // check sequence gap
@@ -305,31 +320,53 @@ Session.prototype._process_incoming = function(msg, cb) {
     }
 
     if (msg_seq_num > self.incoming_seq_num) {
-        // clear incoming message queue for new messages from resend request
-        // TODO hang on to these messages?
+        // From the fix spec:
+        // Two options exist for dealing with gaps, either request all messages
+        // subsequent to the last message received or ask for the specific message
+        // missed while maintaining an ordered list of all newer messages.
+        // The first option is implemented here.
+
+        // Clear incoming message queue for new messages from resend request
         self.msg_queue = [];
 
         // request resend
-        var resend_request = new Msgs.ResendRequest();
-        resend_request.BeginSeqNo = self.incoming_seq_num;
-        resend_request.EndSeqNo = 0;
-        return cb(resend_request);
+        result = new Msgs.ResendRequest();
+        result.BeginSeqNo = self.incoming_seq_num;
+        result.EndSeqNo = 0;
+        return cb(result);
     } else if (msg_seq_num < self.incoming_seq_num) {
         // From the fix spec:
-        // If the incoming message has a sequence number less than expected and the
-        // PossDupFlag is not set, it indicates a serious error. It is strongly
-        // recommended that the session be terminated and manual intervention be initiated.
+        // In *ALL* cases except the Sequence Reset - Reset message, the FIX session
+        // should be terminated if the incoming sequence number is less than expected and
+        // the PossDupFlag is not set. A Logout message with some descriptive text should
+        // be sent to the other side before closing the session.
 
-        // TODO our callback mechanism needs a way to drop messages to the floor
-        // no reject, no send, no further processing
-        //if (msg.PossDupFlag === 'Y') {
-            // ignore
-            //return; // we can't do this, no other handlers will be called ever again
-        //}
+        // Drop message if possible duplicate: no reject, no send, no further processing.
+        if (msg.PossDupFlag === 'Y') {
+            result = new Msg();
+            result.ignore = true;
+            return cb(result);
+        }
 
-        cb(new Error('sequence reversal; expecting ' + self.incoming_seq_num + ' got ' + msg_seq_num + '. terminating session'));
+        // Clear incoming message queue as we're going to end the session.
+        self.msg_queue = [];
+
+        result = new Msgs.Logout();
+        result.Text = 'MsgSeqNum too low, expecting ' + self.incoming_seq_num +
+                ' but received ' + msg_seq_num;
+        cb(result);
         return self.end();
     }
+    /*
+    // TODO?
+    // MsgSeqNum as expected.
+    else if (msg.PossDupFlag === 'Y') {
+        // >= FIX 4.2
+        // Check that OrigSendingTime < SendingTime.
+        // If not, reject with "SendingTime acccuracy problem".
+        // If OrigSendingTime is not specified, reject with "Required tag missing".
+    }
+    */
 
     // set new expected seq
     self.incoming_seq_num = msg_seq_num + 1;
@@ -348,7 +385,7 @@ Session.prototype.send = function(msg) {
     msg.TargetCompID = self.target_comp_id;
     msg.SendingTime = new Date();
 
-    self.timeOfLastOutgoing = new Date().getTime();
+    self.last_outgoing_time = Date.now();
 
     // increment the next outgoing
     msg.MsgSeqNum = self.outgoing_seq_num++;
