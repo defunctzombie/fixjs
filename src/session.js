@@ -284,7 +284,7 @@ Session.prototype.incoming = function(msg) {
 Session.prototype._process_incoming = function(msg, cb) {
     var self = this;
 
-    self.last_timestamp = Date.now();
+    self.last_incoming_time = Date.now();
 
     // first message should always be a logon
     if (!self.is_logged_in && msg.MsgType !== 'A') {
