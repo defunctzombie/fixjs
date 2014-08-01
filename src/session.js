@@ -16,6 +16,8 @@ var Session = function(is_acceptor, opt) {
 
     self.is_acceptor = is_acceptor;
     self.respond_to_logon = true;
+	self.send_heartbeats = true;
+    self.expect_heartbeats = true;
 
     self.sender_comp_id = opt.sender;
     self.target_comp_id = opt.target;
@@ -31,6 +33,7 @@ var Session = function(is_acceptor, opt) {
 
     admin.Logon = function(msg, next) {
         var heartbt_milli = +msg.HeartBtInt * 1000;
+
         if (isNaN(heartbt_milli)) {
             // send back invalid heartbeat
             return next(new Error('invalid heartbeat interval, must be numeric'));
@@ -38,22 +41,28 @@ var Session = function(is_acceptor, opt) {
 
         // heatbeat handler
         var heartbeat_timer = setInterval(function () {
-            var currentTime = new Date();
+            var currentTime = Date.now();
+            var elapsed = currentTime - self.last_incoming_time;
 
-            // counter party might be dead, kill connection
-            if (currentTime - self.last_incomin_time > heartbt_milli * 2 && self.expectHeartbeats) {
-                self.emit('error', new Error('no heartbeat from counter party in ' + heartbt_milli + ' milliseconds'));
-                self.end();
-                return;
-            }
+            // Incoming heartbeat is late
+            if (elapsed > (heartbt_milli * 1.5) && self.expect_heartbeats) {
 
-            // ask counter party to wake up
-            if (currentTime - self.last_incoming_time > (heartbt_milli * 1.5) && self.expectHeartbeats) {
-                // TODO send test message
+                // counter party might be dead, kill connection
+                if (elapsed > heartbt_milli * 2) {
+                    self.emit('error', new Error('no heartbeat from counter party in ' + heartbt_milli + ' milliseconds'));
+                    self.end();
+                    return;
+                }
+
+                // ask counter party to wake up
+                // TODO check response has correct TestReqID
+                var testRequest = new Msgs.TestRequest();
+                testRequest.TestReqID = 'TEST';
+                self.send(testRequest);
             }
 
             // heartbeat time!
-            if (currentTime - self.last_outgoing_time > heartbt_milli && self.sendHeartbeats) {
+            if (currentTime - self.last_outgoing_time > heartbt_milli && self.send_heartbeats) {
                 // send here, not next because it is an interval
                 self.send(new Msgs.Heartbeat());
             }
