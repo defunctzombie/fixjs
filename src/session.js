@@ -302,7 +302,7 @@ Session.prototype._process_incoming = function(msg, cb) {
 
         // request resend
         var resend_request = new Msgs.ResendRequest();
-        resend_request.BeginSeqNo = self.incomingSeqNum;
+        resend_request.BeginSeqNo = self.incoming_seq_num;
         resend_request.EndSeqNo = 0;
         return cb(resend_request);
     } else if (msg_seq_num < self.incoming_seq_num) {
