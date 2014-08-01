@@ -10,4 +10,6 @@ exports.createClient = function(stream, opt) {
 };
 
 exports.Msgs = require('./src/msgs');
+exports.Server = Server;
+exports.Client = Client;
 
