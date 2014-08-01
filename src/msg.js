@@ -77,13 +77,19 @@ Msg.prototype.serialize = function() {
     }
 
     var headermsg = header_arr.join(Msg.kFieldSeparator);
-    var bodymsg = body_arr.join(Msg.kFieldSeparator);
 
     var out = [];
     out.push('8=' + 'FIX.4.2'); // TODO variable
-    out.push('9=' + (headermsg.length + bodymsg.length + 2)); // +2 for separators we will add
-    out.push(headermsg);
-    out.push(bodymsg);
+
+    if (body_arr.length){
+        var bodymsg = body_arr.join(Msg.kFieldSeparator);
+        out.push('9=' + (headermsg.length + bodymsg.length + 2)); // +2 for separators we will add
+        out.push(headermsg);
+        out.push(bodymsg);
+    } else {
+        out.push('9=' + (headermsg.length + 1));
+        out.push(headermsg);
+    }
 
     var outmsg = out.join(Msg.kFieldSeparator);
     outmsg += Msg.kFieldSeparator;
@@ -126,6 +132,8 @@ Msg.parse = function(raw) {
         var id = components.shift();
         fix[id] = components.join('=');
     });
+
+    console.log( require('util').inspect(fix, false, null) );
 
     // TODO validate header
     var type = fix['35'];
