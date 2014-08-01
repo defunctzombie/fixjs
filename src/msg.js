@@ -13,18 +13,6 @@ var Msg = function() {
     // map of field number (as a string) to field value
     self._fields = {};
 
-    self._define_field = function(field_id, name, opt) {
-        var validator = (opt && opt.validator) ? opt.validator : function(v) { return v; };
-        Object.defineProperty(self, name, {
-            get: function() {
-                return self.get(field_id);
-            },
-            set: function(value) {
-                self.set(field_id, validator(value));
-            }
-        });
-    };
-
     self._define_field('49', 'SenderCompID');
     self._define_field('56', 'TargetCompID');
     self._define_field('50', 'SenderSubID');
@@ -42,6 +30,19 @@ var Msg = function() {
 
 // constants
 Msg.kFieldSeparator = String.fromCharCode(1);
+
+Msg.prototype._define_field = function(field_id, name, opt) {
+    var self = this;
+    var validator = (opt && opt.validator) ? opt.validator : function(v) { return v; };
+    Object.defineProperty(self, name, {
+        get: function() {
+            return self.get(field_id);
+        },
+        set: function(value) {
+            self.set(field_id, validator(value));
+        }
+    });
+};
 
 Msg.prototype.get = function(field_id) {
     var self = this;
@@ -132,8 +133,6 @@ Msg.parse = function(raw) {
         var id = components.shift();
         fix[id] = components.join('=');
     });
-
-    console.log( require('util').inspect(fix, false, null) );
 
     // TODO validate header
     var type = fix['35'];
