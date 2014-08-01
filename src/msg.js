@@ -1,10 +1,10 @@
 /// fix message
 
-var moment = require('moment');
-
 // convert a date object into a fix formatted timestamp
 var getUTCTimeStamp = function(date){
-    return moment(date).utc().format('YYYYMMDD-HH:mm:ss.SSS');
+    // toISOString:  YYYY-MM-DDTHH:mm:ss.sssZ
+    // Fix protocol: YYYYMMDD-HH:MM:SS.sss
+    return date.toISOString().replace(/[-Z]/g, '').replace('T', '-');
 }
 
 var Msg = function() {
