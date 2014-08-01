@@ -47,12 +47,7 @@ Server.prototype.attach = function(stream) {
 
     // new fix message
     decoder.on('data', function(msg) {
-
-        // this is a huge problem
-        // a person could technically connect with a spoofed SenderCompID
-        // and then be re-attached to the session of a previous person
-
-        var session_id = msg.SenderCompID;
+        var session_id = msg.SenderCompID + separator + msg.TargetCompID;
         var session = sessions[session_id];
 
         if (session) {
