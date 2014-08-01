@@ -59,7 +59,7 @@ parser.parseString(data, function (err, result) {
             });
         };
 
-        msg_t.prototype = new Msg();
+        util.inherits(msg_t, Msg);
 
         msg_t.prototype.toString = function() {
             var self = this;
