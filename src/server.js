@@ -47,38 +47,33 @@ Server.prototype.attach = function(stream) {
 
     // new fix message
     decoder.on('data', function(msg) {
+
         // this is a huge problem
         // a person could technically connect with a spoofed SenderCompID
         // and then be re-attached to the session of a previous person
 
-        // check if already have a session
-        // if new session
         var session_id = msg.SenderCompID;
-        var details = sessions[session_id];
+        var session = sessions[session_id];
 
-        if (details) {
-            // if the two streams are not the same, someone is trying to spoof us
-            if (details.stream !== stream) {
+        if (session) {
+            // Prevent simultaneous connections with same session_id.
+            // If the two streams are not the same, someone may be trying to spoof us.
+            if (session.stream !== stream) {
                 // terminate immediately
                 return stream.end();
             }
 
-            return details.session.incoming(msg);
+            return session.incoming(msg);
         }
 
         // no session for this session id yet, create it
-        var session = new Session(true, {
+        session = new Session(true, {
             // flipped because we are now the sender
             sender: msg.TargetCompID,
             target: msg.SenderCompID,
         });
 
-        // see note above for session variable on why this is
-        details = sessions[session_id] = {
-            stream: stream,
-            session: session,
-        }
-
+        session.stream = stream;
         ++session_count;
 
         // when session is done, remove it from
@@ -111,11 +106,10 @@ Server.prototype.attach = function(stream) {
             stream.write(out);
         });
 
+        sessions[session_id] = session;
         self.emit('session', session);
 
-        // TODO check for other headers to be consistent?
-
-        details.session.incoming(msg);
+        session.incoming(msg);
     });
 
     stream.on('end', function() {
