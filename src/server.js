@@ -1,21 +1,29 @@
 // builtin
-var events = require('events');
+var EventEmitter = require('events').EventEmitter;
+var util = require("util");
 
 // local
 var FixFrameDecoder = require('./frame_decoder');
 var Session = require('./session');
 
+var separator = '\x01';
+
+/*
+ Being able to create more than one instance of Server is convenient for testing
+ but it enables simultaneous connections of the same SenderCompID/TargetCompID pair,
+ i.e. it is a security risk.
+ */
 var Server = function(opt) {
     var self = this;
-    events.EventEmitter.call(self);
 
-    // map of session ids that are currently active
-    // the value in the map is an object with fields 'stream', and 'session'
-    // this is to ensure that only the connected stream is accessing the session
+    EventEmitter.call(self);
+
+    // Map of session ids that are currently active, so different streams
+    // can be prevented from accessing the same session.
     self.sessions = {};
 };
 
-Server.prototype = new events.EventEmitter();
+util.inherits(Server, EventEmitter);
 
 // attach the server to this stream
 // servers should be attached to multiple streams
@@ -34,49 +42,36 @@ Server.prototype.attach = function(stream) {
         stream.end();
     }, 1000 * 30);
 
-    // TODO(shtylman) when stream ends, everything is done
     stream.on('end', function() {
         clearTimeout(logon_timeout);
     });
-
-    // TODO(shtylman) emit on successful login?
 
     var session_count = 0;
 
     // new fix message
     decoder.on('data', function(msg) {
-        // this is a huge problem
-        // a person could technically connect with a spoofed SenderCompID
-        // and then be re-attached to the session of a previous person
+        var session_id = msg.SenderCompID + separator + msg.TargetCompID;
+        var session = sessions[session_id];
 
-        // check if already have a session
-        // if new session
-        var session_id = msg.SenderCompID;
-        var details = sessions[session_id];
-
-        if (details) {
-            // if the two streams are not the same, someone is trying to spoof us
-            if (details.stream !== stream) {
+        if (session) {
+            // Prevent simultaneous connections with same session_id.
+            // If the two streams are not the same, someone may be trying to spoof us.
+            if (session.stream !== stream) {
                 // terminate immediately
                 return stream.end();
             }
 
-            return details.session.incoming(msg);
+            return session.incoming(msg);
         }
 
         // no session for this session id yet, create it
-        var session = new Session(true, {
+        session = new Session(true, {
             // flipped because we are now the sender
             sender: msg.TargetCompID,
             target: msg.SenderCompID,
         });
 
-        // see note above for session variable on why this is
-        details = sessions[session_id] = {
-            stream: stream,
-            session: session,
-        }
-
+        session.stream = stream;
         ++session_count;
 
         // when session is done, remove it from
@@ -109,16 +104,11 @@ Server.prototype.attach = function(stream) {
             stream.write(out);
         });
 
+        sessions[session_id] = session;
         self.emit('session', session);
 
-        // TODO check for other headers to be consistent?
-
-        details.session.incoming(msg);
+        session.incoming(msg);
     });
-
-    stream.on('end', function() {
-        // anything?
-    })
 };
 
 module.exports = Server;

@@ -1,12 +1,10 @@
 {
   "name": "fixjs",
   "description": "FIX Protocol library",
-  "version": "0.0.1",
-  "author": "Roman Shtylman <shtylman@gmail.com>",
+  "version": "0.0.2",
   "main": "fix",
   "dependencies": {
     "xml2js": "0.1.13",
-    "moment": "1.7.2",
     "through": "2.2.0"
   },
   "devDependencies": {
@@ -19,6 +17,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/shtylman/fixjs.git"
-  }
+    "url": "git@github.com:MikeMcl/fixjs.git"
+  },
+  "private": true
 }

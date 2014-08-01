@@ -1,10 +1,10 @@
 /// fix message
 
-var moment = require('moment');
-
 // convert a date object into a fix formatted timestamp
 var getUTCTimeStamp = function(date){
-    return moment(date).utc().format('YYYYMMDD-HH:mm:ss.SSS');
+    // toISOString:  YYYY-MM-DDTHH:mm:ss.sssZ
+    // Fix protocol: YYYYMMDD-HH:MM:SS.sss
+    return date.toISOString().replace(/[-Z]/g, '').replace('T', '-');
 }
 
 var Msg = function() {
@@ -12,18 +12,6 @@ var Msg = function() {
 
     // map of field number (as a string) to field value
     self._fields = {};
-
-    self._define_field = function(field_id, name, opt) {
-        var validator = (opt && opt.validator) ? opt.validator : function(v) { return v; };
-        Object.defineProperty(self, name, {
-            get: function() {
-                return self.get(field_id);
-            },
-            set: function(value) {
-                self.set(field_id, validator(value));
-            }
-        });
-    };
 
     self._define_field('49', 'SenderCompID');
     self._define_field('56', 'TargetCompID');
@@ -42,6 +30,19 @@ var Msg = function() {
 
 // constants
 Msg.kFieldSeparator = String.fromCharCode(1);
+
+Msg.prototype._define_field = function(field_id, name, opt) {
+    var self = this;
+    var validator = (opt && opt.validator) ? opt.validator : function(v) { return v; };
+    Object.defineProperty(self, name, {
+        get: function() {
+            return self.get(field_id);
+        },
+        set: function(value) {
+            self.set(field_id, validator(value));
+        }
+    });
+};
 
 Msg.prototype.get = function(field_id) {
     var self = this;
@@ -77,13 +78,19 @@ Msg.prototype.serialize = function() {
     }
 
     var headermsg = header_arr.join(Msg.kFieldSeparator);
-    var bodymsg = body_arr.join(Msg.kFieldSeparator);
 
     var out = [];
     out.push('8=' + 'FIX.4.2'); // TODO variable
-    out.push('9=' + (headermsg.length + bodymsg.length + 2)); // +2 for separators we will add
-    out.push(headermsg);
-    out.push(bodymsg);
+
+    if (body_arr.length){
+        var bodymsg = body_arr.join(Msg.kFieldSeparator);
+        out.push('9=' + (headermsg.length + bodymsg.length + 2)); // +2 for separators we will add
+        out.push(headermsg);
+        out.push(bodymsg);
+    } else {
+        out.push('9=' + (headermsg.length + 1));
+        out.push(headermsg);
+    }
 
     var outmsg = out.join(Msg.kFieldSeparator);
     outmsg += Msg.kFieldSeparator;

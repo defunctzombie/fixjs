@@ -1,6 +1,7 @@
 /// fix session
 
-var events = require('events');
+var EventEmitter = require('events').EventEmitter;
+var util = require("util");
 
 var Msg = require('./msg');
 var Msgs = require('./msgs');
@@ -8,11 +9,15 @@ var Msgs = require('./msgs');
 var Session = function(is_acceptor, opt) {
     var self = this;
 
+    EventEmitter.call(self);
+
     self.incoming_seq_num = 1;
     self.outgoing_seq_num = 1;
 
     self.is_acceptor = is_acceptor;
     self.respond_to_logon = true;
+    self.send_heartbeats = true;
+    self.expect_heartbeats = true;
 
     self.sender_comp_id = opt.sender;
     self.target_comp_id = opt.target;
@@ -28,6 +33,7 @@ var Session = function(is_acceptor, opt) {
 
     admin.Logon = function(msg, next) {
         var heartbt_milli = +msg.HeartBtInt * 1000;
+
         if (isNaN(heartbt_milli)) {
             // send back invalid heartbeat
             return next(new Error('invalid heartbeat interval, must be numeric'));
@@ -35,22 +41,28 @@ var Session = function(is_acceptor, opt) {
 
         // heatbeat handler
         var heartbeat_timer = setInterval(function () {
-            var currentTime = new Date();
+            var currentTime = Date.now();
+            var elapsed = currentTime - self.last_incoming_time;
 
-            // counter party might be dead, kill connection
-            if (currentTime - self.last_incomin_time > heartbt_milli * 2 && self.expectHeartbeats) {
-                self.emit('error', new Error('no heartbeat from counter party in ' + heartbt_milli + ' milliseconds'));
-                self.end();
-                return;
-            }
+            // Incoming heartbeat is late
+            if (elapsed > (heartbt_milli * 1.5) && self.expect_heartbeats) {
 
-            // ask counter party to wake up
-            if (currentTime - self.last_incoming_time > (heartbt_milli * 1.5) && self.expectHeartbeats) {
-                // TODO send test message
+                // counter party might be dead, kill connection
+                if (elapsed > heartbt_milli * 2) {
+                    self.emit('error', new Error('no heartbeat from counter party in ' + heartbt_milli + ' milliseconds'));
+                    self.end();
+                    return;
+                }
+
+                // ask counter party to wake up
+                // TODO check response has correct TestReqID
+                var testRequest = new Msgs.TestRequest();
+                testRequest.TestReqID = 'TEST';
+                self.send(testRequest);
             }
 
             // heartbeat time!
-            if (currentTime - self.last_outgoing_time > heartbt_milli && self.sendHeartbeats) {
+            if (currentTime - self.last_outgoing_time > heartbt_milli && self.send_heartbeats) {
                 // send here, not next because it is an interval
                 self.send(new Msgs.Heartbeat());
             }
@@ -98,6 +110,13 @@ var Session = function(is_acceptor, opt) {
         // we got a logout request, respond
         // this gives the counter party a chance to do perform resend requests
         self.send(new Msgs.Logout());
+
+        // From page 58 of FixT1.1 spec:
+        // Wait for counterparty to disconnect up to 10 seconds.
+        // If max exceeded, disconnect.
+        //self.? = setTimeout(function() {
+        //    self.end();
+        //}, 1000 * 10);
 
         // TODO should resend requests be the only thing supported here?
         // IE only allow admin messages after a logout confirmation
@@ -183,7 +202,7 @@ var Session = function(is_acceptor, opt) {
     });
 };
 
-Session.prototype = new events.EventEmitter();
+util.inherits(Session, EventEmitter);
 
 Session.prototype.reject = function(orig_msg, reason) {
     var self = this;
@@ -251,7 +270,7 @@ Session.prototype.incoming = function(msg) {
                 // if a logon message, session will be ended
                 // no more messages will be processed
                 if (msg.MsgType === 'A') {
-                    self.msg_queue = []
+                    self.msg_queue = [];
                     next_msg();
                     return self.end();
                 }
@@ -259,7 +278,10 @@ Session.prototype.incoming = function(msg) {
                 self.reject(msg, result.message);
                 return next_msg();
             } else if (result instanceof Msg) {
-                self.send(result);
+
+                if (!result.ignore) {
+                    self.send(result);
+                }
                 return next_msg();
             }
 
@@ -271,12 +293,17 @@ Session.prototype.incoming = function(msg) {
 
 Session.prototype._process_incoming = function(msg, cb) {
     var self = this;
+    var result;
 
-    self.last_timestamp = Date.now();
+    self.last_incoming_time = Date.now();
+
+    // TODO?
+    // Check format and accuracy of SendingTime.
+    // Reject with "SendingTime acccuracy problem".
 
     // first message should always be a logon
     if (!self.is_logged_in && msg.MsgType !== 'A') {
-        return cb(new Error('expected Logon message, got: ' + msg.MsgType));
+        return cb(new Error('First message not a logon: ' + msg.MsgType));
     }
 
     // check sequence gap
@@ -293,31 +320,53 @@ Session.prototype._process_incoming = function(msg, cb) {
     }
 
     if (msg_seq_num > self.incoming_seq_num) {
-        // clear incoming message queue for new messages from resend request
-        // TODO hang on to these messages?
+        // From the fix spec:
+        // Two options exist for dealing with gaps, either request all messages
+        // subsequent to the last message received or ask for the specific message
+        // missed while maintaining an ordered list of all newer messages.
+        // The first option is implemented here.
+
+        // Clear incoming message queue for new messages from resend request
         self.msg_queue = [];
 
         // request resend
-        var resend_request = new Msgs.ResendRequest();
-        resend_request.BeginSeqNo = self.incomingSeqNum;
-        resend_request.EndSeqNo = 0;
-        return cb(resend_request);
+        result = new Msgs.ResendRequest();
+        result.BeginSeqNo = self.incoming_seq_num;
+        result.EndSeqNo = 0;
+        return cb(result);
     } else if (msg_seq_num < self.incoming_seq_num) {
         // From the fix spec:
-        // If the incoming message has a sequence number less than expected and the
-        // PossDupFlag is not set, it indicates a serious error. It is strongly
-        // recommended that the session be terminated and manual intervention be initiated.
+        // In *ALL* cases except the Sequence Reset - Reset message, the FIX session
+        // should be terminated if the incoming sequence number is less than expected and
+        // the PossDupFlag is not set. A Logout message with some descriptive text should
+        // be sent to the other side before closing the session.
 
-        // TODO our callback mechanism needs a way to drop messages to the floor
-        // no reject, no send, no further processing
-        //if (msg.PossDupFlag === 'Y') {
-            // ignore
-            //return; // we can't do this, no other handlers will be called ever again
-        //}
+        // Drop message if possible duplicate: no reject, no send, no further processing.
+        if (msg.PossDupFlag === 'Y') {
+            result = new Msg();
+            result.ignore = true;
+            return cb(result);
+        }
 
-        cb(new Error('sequence reversal; expecting ' + self.incoming_seq_num + ' got ' + msg_seq_num + '. terminating session'));
+        // Clear incoming message queue as we're going to end the session.
+        self.msg_queue = [];
+
+        result = new Msgs.Logout();
+        result.Text = 'MsgSeqNum too low, expecting ' + self.incoming_seq_num +
+                ' but received ' + msg_seq_num;
+        cb(result);
         return self.end();
     }
+    /*
+    // TODO?
+    // MsgSeqNum as expected.
+    else if (msg.PossDupFlag === 'Y') {
+        // >= FIX 4.2
+        // Check that OrigSendingTime < SendingTime.
+        // If not, reject with "SendingTime acccuracy problem".
+        // If OrigSendingTime is not specified, reject with "Required tag missing".
+    }
+    */
 
     // set new expected seq
     self.incoming_seq_num = msg_seq_num + 1;
@@ -336,7 +385,7 @@ Session.prototype.send = function(msg) {
     msg.TargetCompID = self.target_comp_id;
     msg.SendingTime = new Date();
 
-    self.timeOfLastOutgoing = new Date().getTime();
+    self.last_outgoing_time = Date.now();
 
     // increment the next outgoing
     msg.MsgSeqNum = self.outgoing_seq_num++;
@@ -344,8 +393,8 @@ Session.prototype.send = function(msg) {
     self.emit('send', msg);
 };
 
-/// logon to a client session
-/// 'logon' event fired when session is active
+// logon to a client session
+// 'logon' event fired when session is active
 Session.prototype.logon = function(additional_fields) {
     var self = this;
     var msg = new Msgs.Logon();
@@ -362,11 +411,14 @@ Session.prototype.logon = function(additional_fields) {
     self.send(msg);
 };
 
-/// initiate a logout sequence and subsequently end a session
+// initiate a logout sequence and subsequently end a session
 Session.prototype.logout = function(reason) {
     var self = this;
     var msg = new Msgs.Logout();
-    msg.Text = reason;
+
+    if (reason){
+        msg.Text = reason;
+    }
     self.send(msg);
 
     // if counter party was logged in, wait for their confirmation
@@ -378,7 +430,7 @@ Session.prototype.logout = function(reason) {
     }
 };
 
-/// terminate the session
+// terminate the session
 Session.prototype.end = function() {
     var self = this;
 
