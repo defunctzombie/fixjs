@@ -26,7 +26,7 @@ Server.prototype.attach = function(stream) {
     var decoder = stream.pipe(FixFrameDecoder());
 
     decoder.on('error', function(err) {
-        self.emit('error', err);
+        self.emit('error', err, stream);
     });
 
     // user has 30 seconds to establish any session, otherwise they are disconnected
