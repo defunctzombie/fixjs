@@ -1,6 +1,8 @@
 language: node_js
 node_js:
     - "0.8"
+    - "0.9.0" # to debug streams issue
+    - "0.9.6" # to debug streams issue
     - "0.9"
     - "0.10"
     - "0.11"
