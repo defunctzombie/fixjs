@@ -199,7 +199,7 @@ Session.prototype.reject = function(orig_msg, reason) {
 Session.prototype.incoming = function(msg) {
     var self = this;
 
-    // messages need to be processes in the order in which they are received
+    // messages need to be processed in the order in which they are received
     // it would be wrong to receive order A then order B and for some reason
     // send order B to the matching engine before order A
     if (self.processing) {
