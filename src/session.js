@@ -183,7 +183,7 @@ var Session = function(is_acceptor, opt) {
     });
 };
 
-Session.prototype = new events.EventEmitter();
+Session.prototype.__proto__ = events.EventEmitter.prototype;
 
 Session.prototype.reject = function(orig_msg, reason) {
     var self = this;
