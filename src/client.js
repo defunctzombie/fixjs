@@ -1,4 +1,3 @@
-// builtin
 var events = require('events');
 
 // local
@@ -34,7 +33,7 @@ var Client = function(stream, opt) {
     });
 };
 
-Client.prototype = new events.EventEmitter();
+Client.prototype.__proto__ = events.EventEmitter.prototype;
 
 // create a new session, the session is in a non-logged on state
 Client.prototype.session = function(sender_comp_id, target_comp_id) {
