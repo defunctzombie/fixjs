@@ -2,8 +2,8 @@
 
 var assert = require('assert');
 var after = require('after');
-var through = require('through');
-var duplexer = require('duplexer');
+var through = require('through2');
+var duplexer = require('duplexer2');
 
 var fix = require('..');
 var Msgs = fix.Msgs;

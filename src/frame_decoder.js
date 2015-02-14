@@ -1,5 +1,4 @@
-// builtin
-var through = require('through');
+var through = require('through2');
 
 var Msg = require('./msg');
 
@@ -12,15 +11,15 @@ var kChecksumFieldLen = 7;
 module.exports = function() {
     var buffer = '';
 
-    var stream = through(function(data) {
+    var stream = through.obj(function(chunk, enc, cb) {
         var self = this;
-        buffer += data;
+        buffer += chunk;
 
         while (buffer.length > 0) {
             // Step 1: Extract complete FIX message
             // If we don't have enough data to start extracting body length, wait for more data
             if (buffer.length < kFirstFieldLen + 14) {
-                return;
+                return cb();
             }
 
             // look for a field separator after the one after 8=FIX.#.#<SOH>
@@ -34,10 +33,10 @@ module.exports = function() {
                 // tag 9 can only have values 0-9999
                 if (buffer.length > 17) {
                     var err = 'no valid BodyLength tag found in header: ' + buffer;
-                    return self.emit('error', new Error(err));
+                    return cb(new Error(err));
                 }
 
-                return;
+                return cb();
             }
 
             // get field separator after tag9
@@ -48,7 +47,7 @@ module.exports = function() {
 
             if (isNaN(body_len)) {
                 var err = 'message length is not a valid number: ' + body_len_str;
-                return self.emit('error', new Error(err));
+                return cb(new Error(err));
             }
 
             // make sure to include checksum field and trailing separator
@@ -58,7 +57,7 @@ module.exports = function() {
 
             // don't have full message yet
             if (buffer.length < msg_len) {
-                return;
+                return cb();
             }
 
             var msg = buffer.slice(0, msg_len);
@@ -74,16 +73,13 @@ module.exports = function() {
 
             if (expected_checksum !== actual_checksum) {
                 var err = 'Invalid checksum: ' + msg;
-                return self.emit('error', new Error(err));
+                return cb(new Error(err));
             }
 
             // load up proper message type
             var msg = Msg.parse(msg);
-            self.emit('data', msg);
-
+            cb(null, msg);
         }
-    }, function() {
-        // stream end
     });
 
     return stream;
