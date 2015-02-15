@@ -387,6 +387,7 @@ Session.prototype.end = function() {
     self.is_logged_in = false;
 
     self.emit('end');
+    self.removeAllListeners('end'); // avoid duplicate 'end' events
 };
 
 module.exports = Session;
