@@ -108,7 +108,7 @@ Server.prototype.attach = function(stream) {
             stream.write(out);
         });
 
-        self.emit('session', session);
+        self.emit('session', session, stream);
 
         // TODO check for other headers to be consistent?
 
