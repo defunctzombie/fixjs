@@ -94,10 +94,6 @@ Server.prototype.attach = function(stream) {
             clearTimeout(logon_timeout);
         });
 
-        stream.on('end', function() {
-            session.end();
-        });
-
         stream.on('close', function() {
             session.end();
         });
