@@ -165,13 +165,15 @@ var Session = function(is_acceptor, opt) {
             return next(new Error('unsupported message type: ' + msg.MsgType));
         }
 
+        // to make sure each handler completes fully, including async actions,
+        // we do this instead of self.emit(msg.name, msg)
         (function next_listener() {
             var handler = listeners.shift();
             if (!handler) {
                 return next();
             }
 
-            handler(msg, function(result) {
+            handler.call(self, msg, function(result) {
                 if (result) {
                     return next(result);
                 }
