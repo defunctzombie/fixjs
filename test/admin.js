@@ -115,6 +115,7 @@ test('test request', function(done) {
     });
 
     session.on('Heartbeat', function(msg, next) {
+        assert.equal(this, session);
         assert.equal(1337, msg.TestReqID);
         next();
         done();
@@ -209,6 +210,7 @@ test('resend request', function(done) {
     });
 
     session.on('SequenceReset', function(msg, next) {
+        assert.equal(this, session);
         assert.equal('10', msg.NewSeqNo);
         assert.equal('N', msg.GapFillFlag);
         next();
