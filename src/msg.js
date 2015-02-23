@@ -30,14 +30,7 @@ var Msg = function() {
     self._define_field('50', 'SenderSubID');
     self._define_field('35', 'MsgType');
     self._define_field('34', 'MsgSeqNum');
-    self._define_field('52', 'SendingTime', {
-        validator: function(value) {
-            if (value instanceof Date) {
-                return getUTCTimeStamp(value);
-            }
-            return value;
-        }
-    });
+    self._define_field('52', 'SendingTime');
 };
 
 // constants
@@ -50,6 +43,11 @@ Msg.prototype.get = function(field_id) {
 
 Msg.prototype.set = function(field_id, value) {
     var self = this;
+
+    if (value instanceof Date) {
+        value = getUTCTimeStamp(value);
+    }
+
     self._fields[field_id] = value;
 }
 
