@@ -330,13 +330,16 @@ Session.prototype._process_incoming = function(msg, cb) {
 };
 
 // send a message to the session
-Session.prototype.send = function(msg) {
+Session.prototype.send = function(msg, keep_set_fields) {
     var self = this;
 
     // set session specific headers
     msg.SenderCompID = self.sender_comp_id;
     msg.TargetCompID = self.target_comp_id;
-    msg.SendingTime = new Date();
+
+    if (!keep_set_fields || msg.SendingTime === undefined) {
+        msg.SendingTime = new Date();
+    }
 
     self.timeOfLastOutgoing = new Date().getTime();
 
