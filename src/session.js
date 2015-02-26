@@ -371,7 +371,9 @@ Session.prototype.logon = function(additional_fields) {
 Session.prototype.logout = function(reason) {
     var self = this;
     var msg = new Msgs.Logout();
-    msg.Text = reason;
+    if (reason) {
+        msg.Text = reason;
+    }
     self.send(msg);
 
     // if counter party was logged in, wait for their confirmation
