@@ -2,8 +2,10 @@
 
 var events = require('events');
 
+var Fields = require('./fields');
 var Msg = require('./msg');
 var Msgs = require('./msgs');
+var RejectWithText = require('./errors').RejectWithText;
 
 var Session = function(is_acceptor, opt) {
     var self = this;
@@ -30,7 +32,7 @@ var Session = function(is_acceptor, opt) {
         var heartbt_milli = +msg.HeartBtInt * 1000;
         if (isNaN(heartbt_milli)) {
             // send back invalid heartbeat
-            return next(new Error('invalid heartbeat interval, must be numeric'));
+            return next(new RejectWithText('invalid heartbeat interval, must be numeric', Fields.HeartBtInt));
         };
 
         // heatbeat handler
@@ -133,7 +135,7 @@ var Session = function(is_acceptor, opt) {
 
         // cannot reset to less
         if (reset_num < self.incoming_seq_num) {
-            return next(new Error('SequenceReset may not decrement sequence numbers'));
+            return next(new RejectWithText('SequenceReset may not decrement sequence numbers', Fields.NewSeqNo));
         }
 
         self.incoming_seq_num = reset_num;
@@ -162,7 +164,7 @@ var Session = function(is_acceptor, opt) {
             if (['0', '1', '2', '3', '4', '5', 'A'].indexOf(msg.MsgType) >= 0) {
                 return next();
             }
-            return next(new Error('unsupported message type: ' + msg.MsgType));
+            return next(new RejectWithText('unsupported message type: ' + msg.MsgType, Fields.MsgType));
         }
 
         // to make sure each handler completes fully, including async actions,
@@ -187,7 +189,7 @@ var Session = function(is_acceptor, opt) {
 
 Session.prototype.__proto__ = events.EventEmitter.prototype;
 
-Session.prototype.reject = function(orig_msg, reason) {
+Session.prototype.reject = function(orig_msg, reason, field) {
     var self = this;
 
     var msg = new Msgs.Reject();
@@ -195,6 +197,9 @@ Session.prototype.reject = function(orig_msg, reason) {
     msg.RefMsgType = orig_msg.MsgType;
     if (reason) {
         msg.Text = reason;
+    }
+    if (field) {
+        msg.RefTagID = field.tag || field; // support our Field objects and plain numbers
     }
     return self.send(msg);
 };
@@ -251,16 +256,21 @@ Session.prototype.incoming = function(msg) {
         handler(msg, function(result) {
             clearTimeout(execution_timeout);
 
-            if (result instanceof Error) {
-                // if a logon message, session will be ended
+            if (msg.MsgType === 'A' && result instanceof Error) {
+                // upon rejected logon message, session will be ended
                 // no more messages will be processed
-                if (msg.MsgType === 'A') {
-                    self.msg_queue = []
-                    next_msg();
-                    return self.end();
-                }
+                self.msg_queue = [];
+                next_msg();
+                return self.end();
+            }
 
-                self.reject(msg, result.message);
+            if (result instanceof RejectWithText) {
+                // this type of error contains text intended for the counterparty
+                self.reject(msg, result.message, result.field);
+                return next_msg();
+            } else if (result instanceof Error) {
+                // generic Error message may contain text not intended for the counterparty
+                self.reject(msg);
                 return next_msg();
             } else if (result instanceof Msg) {
                 self.send(result);
@@ -280,14 +290,14 @@ Session.prototype._process_incoming = function(msg, cb) {
 
     // first message should always be a logon
     if (!self.is_logged_in && msg.MsgType !== 'A') {
-        return cb(new Error('expected Logon message, got: ' + msg.MsgType));
+        return cb(new RejectWithText('expected Logon message, got: ' + msg.MsgType, Fields.MsgType));
     }
 
     // check sequence gap
     var msg_seq_num = +msg.MsgSeqNum;
 
     if (isNaN(msg_seq_num)) {
-        return cb(new Error('MsgSeqNum must be numeric: ' + msg.MsgSeqNum));
+        return cb(new RejectWithText('MsgSeqNum must be numeric: ' + msg.MsgSeqNum, Fields.MsgSeqNum));
     }
 
     // SeqReset - Reset ignores message sequencing
@@ -319,7 +329,7 @@ Session.prototype._process_incoming = function(msg, cb) {
             //return; // we can't do this, no other handlers will be called ever again
         //}
 
-        cb(new Error('sequence reversal; expecting ' + self.incoming_seq_num + ' got ' + msg_seq_num + '. terminating session'));
+        cb(new RejectWithText('sequence reversal; expecting ' + self.incoming_seq_num + ' got ' + msg_seq_num + '. terminating session', Fields.MsgSeqNum));
         return self.end();
     }
 
