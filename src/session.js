@@ -193,7 +193,9 @@ Session.prototype.reject = function(orig_msg, reason) {
     var msg = new Msgs.Reject();
     msg.RefSeqNum = orig_msg.MsgSeqNum;
     msg.RefMsgType = orig_msg.MsgType;
-    msg.Text = reason;
+    if (reason) {
+        msg.Text = reason;
+    }
     return self.send(msg);
 };
 
