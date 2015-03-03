@@ -1,4 +1,5 @@
 var after = require('after');
+var assert = require('assert');
 var FrameDecoder = require('../src/frame_decoder');
 
 var sep = String.fromCharCode(1);
@@ -58,3 +59,26 @@ test('decode wiki example', function(done) {
     decoder.write(msg.replace(/\|/g, sep));
 });
 
+test('invalid metadata', function(done) {
+    var examples = {
+        'Invalid CheckSum: ': ['8=', 'FIX.4.2', sep, '9=', '5', sep, '35=0', sep, '10=162', sep],
+        'Invalid BeginString: ': ['8=', 'FiX.4.2', sep, '9=', '5', sep, '35=0', sep, '10=161', sep],
+        'Invalid BodyLength: ': ['8=', 'FIX.4.2', sep, '9=', '50000', sep, '35=0', sep, '10=161', sep],
+    };
+
+    done = after(Object.keys(examples).length, done);
+
+    for (var err_message in examples) {
+        var decoder = FrameDecoder();
+        decoder.on('data', function(msg) {
+            assert(false);
+        });
+
+        try {
+            decoder.write(examples[err_message].join(''));
+        } catch (err) {
+            assert(err.message.indexOf(err_message) === 0, err);
+            done();
+        }
+    }
+});

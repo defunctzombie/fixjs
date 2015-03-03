@@ -22,6 +22,11 @@ module.exports = function() {
                 return cb();
             }
 
+            if (buffer.slice(0, 6) !== '8=FIX.' || buffer[7] !== '.' || buffer[9] !== kFieldSeparator) {
+                var err = 'Invalid BeginString: ' + buffer.slice(0, kFirstFieldLen);
+                return cb(new Error(err));
+            }
+
             // look for a field separator after the one after 8=FIX.#.#<SOH>
             var endTag9 = buffer.indexOf(kFieldSeparator, kFirstFieldLen);
 
@@ -39,14 +44,20 @@ module.exports = function() {
                 return cb();
             }
 
+            if (buffer.slice(kFirstFieldLen, kFirstFieldLen + 2) !== '9=') {
+                var err = 'Invalid BodyLength: ' + buffer.slice(kFirstFieldLen, endTag9);
+                return cb(new Error(err));
+            }
+
             // get field separator after tag9
             // if unable to get end of tag 9, we haven't received a full message yet
-            // +3 for <soh>9=
+            // +2 for '9='
             var body_len_str = buffer.slice(kFirstFieldLen + 2, endTag9);
             var body_len = body_len_str - 0;
 
-            if (isNaN(body_len)) {
-                var err = 'message length is not a valid number: ' + body_len_str;
+            // as parsed above, BodyLength (tag 9) has a limit of 9999 (could be increased)
+            if (isNaN(body_len) || body_len < 0 || body_len > 9999) {
+                var err = 'Invalid BodyLength: ' + body_len_str;
                 return cb(new Error(err));
             }
 
@@ -72,7 +83,7 @@ module.exports = function() {
             var actual_checksum = msg.substr(msg.length - 4, 3);
 
             if (expected_checksum !== actual_checksum) {
-                var err = 'Invalid checksum: ' + msg;
+                var err = 'Invalid CheckSum: ' + msg;
                 return cb(new Error(err));
             }
 
