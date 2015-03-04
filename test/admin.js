@@ -8,6 +8,8 @@ var duplexer = require('duplexer2');
 var fix = require('..');
 var Msgs = fix.Msgs;
 
+suite('admin');
+
 test('logon', function(done) {
     var self = this;
 

@@ -4,6 +4,8 @@ var FrameDecoder = require('../src/frame_decoder');
 
 var sep = String.fromCharCode(1);
 
+suite('frame decoder');
+
 test('decode', function(done) {
 
     var decoder = FrameDecoder();
