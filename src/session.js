@@ -208,6 +208,10 @@ Session.prototype.reject = function(orig_msg, reason, field) {
 Session.prototype.incoming = function(msg) {
     var self = this;
 
+    if (self._stopped) {
+        return;
+    }
+
     // messages need to be processed in the order in which they are received
     // it would be wrong to receive order A then order B and for some reason
     // send order B to the matching engine before order A
@@ -257,11 +261,25 @@ Session.prototype.incoming = function(msg) {
             clearTimeout(execution_timeout);
 
             if (msg.MsgType === 'A' && result instanceof Error) {
+                if (result instanceof RejectWithText) {
+                    // this type of error contains text intended for the counterparty
+                    self.reject(msg, result.message, result.field);
+                }
+                else if (result instanceof Error) {
+                    // generic Error message may contain text not intended for the counterparty
+                    self.reject(msg);
+                }
+
                 // upon rejected logon message, session will be ended
                 // no more messages will be processed
                 self.msg_queue = [];
                 next_msg();
-                return self.end();
+
+                self._stopped = true;
+                setTimeout(function() {
+                    self.end();
+                }, 1000);
+                return;
             }
 
             if (result instanceof RejectWithText) {
