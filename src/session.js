@@ -258,7 +258,7 @@ Session.prototype.incoming = function(msg) {
             err.msg = msg.toString();
             err.handler = handler.toString();
             self.emit('error', err);
-        }, 1000);
+        }, 10000);
 
         handler(msg, function(result) {
             clearTimeout(execution_timeout);
