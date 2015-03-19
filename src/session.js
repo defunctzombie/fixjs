@@ -254,7 +254,10 @@ Session.prototype.incoming = function(msg) {
         // this would be bad as we did not fully process this message but did mark expected sequence numbers
         // maybe mark sequence number after message is done processing? I kinda like that more
         var execution_timeout = setTimeout(function() {
-            self.emit('error', new Error('message handler taking too long to execute: ' + msg.toString()));
+            var err = new Error('message handler taking too long to execute');
+            err.msg = msg.toString();
+            err.handler = handler.toString();
+            self.emit('error', err);
         }, 1000);
 
         handler(msg, function(result) {
