@@ -89,8 +89,9 @@ module.exports = function() {
 
             // load up proper message type
             var msg = Msg.parse(msg);
-            cb(null, msg);
+            this.push(msg);
         }
+        cb();
     });
 
     return stream;
