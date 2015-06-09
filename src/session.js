@@ -28,6 +28,11 @@ var Session = function(is_acceptor, opt) {
     // admin handlers
     var admin = self.admin = {};
 
+    self.sendHeartbeats = true;
+
+    self.last_incoming_time = 0;
+    self.last_outgoing_time = 0;
+
     admin.Logon = function(msg, next) {
         var heartbt_milli = +msg.HeartBtInt * 1000;
         if (isNaN(heartbt_milli)) {
@@ -37,10 +42,10 @@ var Session = function(is_acceptor, opt) {
 
         // heatbeat handler
         var heartbeat_timer = setInterval(function () {
-            var currentTime = new Date();
+            var currentTime = new Date().getTime();
 
             // counter party might be dead, kill connection
-            if (currentTime - self.last_incomin_time > heartbt_milli * 2 && self.expectHeartbeats) {
+            if (currentTime - self.last_incoming_time > heartbt_milli * 2 && self.expectHeartbeats) {
                 self.emit('error', new Error('no heartbeat from counter party in ' + heartbt_milli + ' milliseconds'));
                 self.end();
                 return;
@@ -374,7 +379,7 @@ Session.prototype.send = function(msg, keep_set_fields) {
         msg.SendingTime = new Date();
     }
 
-    self.timeOfLastOutgoing = new Date().getTime();
+    self.last_outgoing_time = new Date().getTime();
 
     // increment the next outgoing
     msg.MsgSeqNum = self.outgoing_seq_num++;
