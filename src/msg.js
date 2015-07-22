@@ -79,9 +79,20 @@ Msg.prototype.serialize = function() {
 
     var out = [];
     out.push('8=' + 'FIX.4.2'); // TODO variable
-    out.push('9=' + (headermsg.length + bodymsg.length + 2)); // +2 for separators we will add
+
+    // if there is no body, then only one separator will be added
+    // if there is a body, then there will be another separator
+    var sep_count = 1;
+    if (bodymsg.length > 0) {
+        sep_count += 1;
+    }
+
+    out.push('9=' + (headermsg.length + bodymsg.length + sep_count));
     out.push(headermsg);
-    out.push(bodymsg);
+
+    if (bodymsg.length > 0) {
+        out.push(bodymsg);
+    }
 
     var outmsg = out.join(Msg.kFieldSeparator);
     outmsg += Msg.kFieldSeparator;
