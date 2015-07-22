@@ -1,6 +1,6 @@
 var after = require('after');
 var assert = require('assert');
-var Msgs = require('../src/Msgs');
+var Msgs = require('../src/msgs');
 
 suite('serialization');
 
