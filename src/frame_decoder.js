@@ -88,9 +88,10 @@ module.exports = function() {
             }
 
             // load up proper message type
-            var msg = Msg.parse(msg);
-            cb(null, msg);
+            self.push(Msg.parse(msg));
         }
+
+        cb();
     });
 
     return stream;
