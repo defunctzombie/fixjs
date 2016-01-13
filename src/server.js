@@ -100,6 +100,10 @@ Server.prototype.attach = function(stream) {
 
         // outgoing messages
         session.on('send', function(msg) {
+            if (!stream.writable) {
+                return;
+            }
+
             var out = msg.serialize();
             stream.write(out);
         });
