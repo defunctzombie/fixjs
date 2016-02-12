@@ -69,7 +69,8 @@ Msg.prototype.serialize = function() {
     var ignore = ['8', '9', '35', '10', '52', '49', '56', '34'];
 
     for (var tag in fields) {
-        if (fields.hasOwnProperty(tag) && ignore.indexOf(tag) === -1) {
+        if (fields.hasOwnProperty(tag) && ignore.indexOf(tag) === -1
+                && typeof fields[tag] !== 'undefined' && fields[tag] !== null) {
             body_arr.push(tag + '=' + fields[tag]);
         }
     }
