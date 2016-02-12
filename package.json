@@ -1,7 +1,7 @@
 {
   "name": "fixjs",
   "description": "FIX Protocol library",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "author": "Roman Shtylman <shtylman@gmail.com>",
   "main": "fix",
   "keywords": [
