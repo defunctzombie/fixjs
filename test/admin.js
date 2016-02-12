@@ -222,7 +222,7 @@ test('resend request', function(done) {
     session.logon();
 });
 
-test('sequest reset', function(done) {
+test('sequence reset', function(done) {
     done = after(2, done);
 
     var stream_server = through();
