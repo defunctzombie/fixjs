@@ -23,12 +23,35 @@ parser.parseString(data, function (err, result) {
     var rev_field_map = {
     };
 
+    var converter_map = {
+    };
+
+    var converters = {
+        'INT' : function(x) {
+            return +x;
+        },
+
+        'FLOAT' : function(x) {
+            return +x;
+        },
+
+        'QTY' : function(x) {
+            return +x;
+        }
+    };
+
+    var identity = function(x) {
+        return x;
+    };
+
     result.fields.field.forEach(function(field) {
         var number = field['@'].number;
         var name = field['@'].name;
+        var type = field['@'].type
 
         field_map[name] = number;
         rev_field_map[number] = name;
+        converter_map[number] = converters[type] || identity
     });
 
     result.messages.message.forEach(function(message) {
@@ -74,6 +97,23 @@ parser.parseString(data, function (err, result) {
                     name = rev_field_map[field_id];
                 }
                 res += name + '=' + val + ' ';
+            });
+            return res;
+        };
+
+        msg_t.prototype.valueOf = function() {
+            var self = this;
+            var res = {};
+
+            // this handles printing custom fields which we don't know the name of
+            var fields = Object.keys(self._fields);
+            fields.forEach(function(field_id) {
+                var val = self.get(field_id);
+                var name = field_id;
+                if (rev_field_map[field_id]) {
+                    name = rev_field_map[field_id];
+                }
+                res[name] = converter_map[field_id](val);
             });
             return res;
         };
