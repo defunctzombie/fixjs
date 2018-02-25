@@ -4,6 +4,7 @@
   "version": "0.5.0",
   "author": "Roman Shtylman <shtylman@gmail.com>",
   "main": "fix",
+  "license": "MIT",
   "keywords": [
     "fix",
     "financial",
@@ -12,9 +13,9 @@
     "quickfix"
   ],
   "dependencies": {
-    "xml2js": "0.1.13",
-    "moment": "1.7.2",
-    "through2": "0.6.3"
+    "moment": "^2.20.1",
+    "through2": "0.6.3",
+    "xml2js": "0.1.13"
   },
   "devDependencies": {
     "mocha": "2.1.0",

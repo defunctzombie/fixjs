@@ -1,6 +1,7 @@
+var path = require('path');
 var after = require('after');
 var assert = require('assert');
-var FrameDecoder = require('../src/frame_decoder');
+var FrameDecoder = require(path.join(__dirname, '..','src','frame_decoder'));
 
 var sep = String.fromCharCode(1);
 

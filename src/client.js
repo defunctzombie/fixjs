@@ -1,8 +1,9 @@
+const path = require('path');
 var events = require('events');
 
 // local
-var FixFrameDecoder = require('./frame_decoder');
-var Session = require('./session');
+var FixFrameDecoder = require(path.join(__dirname, 'frame_decoder'));
+var Session = require(path.join(__dirname, 'session'));
 
 var Client = function(stream, opt) {
     var self = this;
