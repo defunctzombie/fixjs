@@ -1,5 +1,6 @@
 /// fix message
 
+var path = require('path');
 var moment = require('moment');
 
 // convert a date object into a fix formatted timestamp
@@ -31,6 +32,8 @@ var Msg = function() {
     self._define_field('35', 'MsgType');
     self._define_field('34', 'MsgSeqNum');
     self._define_field('52', 'SendingTime');
+    self._define_field('554', 'Passphrase');
+    self._define_field('8013', 'CancelOrdersOnDisconnect');
 };
 
 // constants
@@ -121,7 +124,7 @@ Msg.checksum = function(str) {
 };
 
 Msg.parse = function(raw) {
-    var Msgs = require('./msgs');
+    var Msgs = require(path.join(__dirname, 'msgs'));
 
     var fix = {};
     var keyvals = raw.split(Msg.kFieldSeparator);

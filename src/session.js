@@ -1,11 +1,11 @@
 /// fix session
-
+const path = require('path');
 var events = require('events');
 
-var Fields = require('./fields');
-var Msg = require('./msg');
-var Msgs = require('./msgs');
-var RejectWithText = require('./errors').RejectWithText;
+var Fields = require(path.join(__dirname, 'fields'));
+var Msg = require(path.join(__dirname, 'msg'));
+var Msgs = require(path.join(__dirname, 'msgs'));
+var RejectWithText = require(path.join(__dirname, 'errors')).RejectWithText;
 
 var Session = function(is_acceptor, opt) {
     var self = this;
